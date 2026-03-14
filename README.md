@@ -43,6 +43,8 @@ This app fetches data from the ELEXON BMRS API:
 
 > **Note:** The BMRS API may require an API key. The app is configured to read `BMRS_API_KEY` from environment variables.
 
+If `BMRS_API_KEY` is not provided, the app falls back to a bundled sample dataset (January 2024) so the UI still works offline.
+
 ## Deployment
 
 ### Heroku (example)

@@ -38,6 +38,14 @@ with col2:
 st.sidebar.markdown("---")
 st.sidebar.markdown("**API Key** (optional): Set `BMRS_API_KEY` in environment variables.")
 
+# If no API key is configured, the app will fall back to bundled sample data.
+api_key = os.environ.get("BMRS_API_KEY")
+if not api_key:
+    st.warning(
+        "BMRS_API_KEY not found. The app will run using bundled sample data that mimics January 2024. "
+        "Set BMRS_API_KEY to load real BMRS data."
+    )
+
 # Load data
 @st.cache_data(show_spinner=False)
 def _load_data():

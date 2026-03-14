@@ -21,6 +21,25 @@ def _parse_datetime(s: str) -> datetime:
     return pd.to_datetime(s, utc=True)
 
 
+SAMPLE_DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
+
+
+def _load_sample_dataset(dataset: str) -> pd.DataFrame | None:
+    """Load sample data from the repository when BMRS API key is not available."""
+
+    mapping = {
+        "FUELHH": "sample_actuals.csv",
+        "WINDFOR": "sample_forecasts.csv",
+    }
+    if dataset not in mapping:
+        return None
+
+    sample_path = os.path.join(SAMPLE_DATA_DIR, mapping[dataset])
+    if os.path.exists(sample_path):
+        return pd.read_csv(sample_path)
+    return None
+
+
 def fetch_bmrs_dataset_csv(dataset: str, from_date: str, to_date: str, extra_params: dict | None = None) -> pd.DataFrame:
     """Fetch BMRS dataset in CSV format and return as a pandas DataFrame.
 
@@ -38,6 +57,10 @@ def fetch_bmrs_dataset_csv(dataset: str, from_date: str, to_date: str, extra_par
 
     api_key = _get_api_key()
     if not api_key:
+        # If the user has not provided an API key, fall back to bundled sample data
+        sample_df = _load_sample_dataset(dataset)
+        if sample_df is not None:
+            return sample_df
         raise RuntimeError(
             "BMRS_API_KEY environment variable is not set. Please set it to your BMRS API key."
         )
