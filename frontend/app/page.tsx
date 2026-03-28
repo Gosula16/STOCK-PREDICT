@@ -223,7 +223,7 @@ export default function Dashboard() {
           <p className="mt-1 text-sm text-zinc-500">
             Last traded price (LTP) comes from Groww when tokens are configured.
             Enable{" "}
-            <code className="rounded bg-zinc-800 px-1">GROWW_ALLOW_PLACE_ORDER</code>{" "}
+            <code className="rounded bg-zinc-800 px-1">GROWW_ALLOW_BROKER_MUTATIONS</code>{" "}
             only if you intend to send real orders via the API.
           </p>
           <div className="mt-4 overflow-hidden rounded-xl border border-zinc-800">
