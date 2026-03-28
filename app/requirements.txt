@@ -1,3 +1,4 @@
+openenv-core>=0.2.0
 streamlit>=1.25
 pandas>=2.0
 requests>=2.30

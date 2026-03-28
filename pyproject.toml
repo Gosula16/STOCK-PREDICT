@@ -1,0 +1,12 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rentai-openenv"
+version = "0.1.0"
+description = "Deployment metadata for OpenEnv multi-mode validation."
+requires-python = ">=3.10"
+dependencies = [
+    "openenv-core>=0.2.0",
+]
