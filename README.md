@@ -1,72 +1,57 @@
-# RentAI / STOCK-PREDICT — AI-assisted trading control plane
+# RentAI / STOCK-PREDICT - AI-assisted trading control plane
 
-Monorepo for a **personal AI-driven trading system**: Next.js dashboard, NestJS gateway, FastAPI orchestrator, optional Groww broker + Hugging Face inference.
+Monorepo for a personal AI-driven trading system with a Next.js dashboard, NestJS gateway, FastAPI orchestrator, optional Groww broker integration, and optional Hugging Face sentiment inference.
 
-> **Not financial advice.** Live trading can lose money. Use paper mode and small size until you trust the stack.
-
----
+> Not financial advice. Live trading can lose money. Use paper mode and tiny size until you trust the stack.
 
 ## Live links
 
-| What | URL |
-|------|-----|
-| **Production dashboard (Vercel)** | [https://frontend-rho-flame-38.vercel.app](https://frontend-rho-flame-38.vercel.app) |
-| **Vercel project (deployments & env)** | [https://vercel.com/125015164-4269s-projects/frontend](https://vercel.com/125015164-4269s-projects/frontend) |
-| **Source repository (GitHub)** | [https://github.com/Gosula16/STOCK-PREDICT](https://github.com/Gosula16/STOCK-PREDICT) |
+Verified on March 28, 2026:
 
-**Important:** The dashboard loads on Vercel, but **signals and broker panels need a public API**. Set **`GATEWAY_URL`** and **`API_SECRET`** in the Vercel project (Settings → Environment Variables) after you deploy the gateway (see [Production deployment](#production-deployment-full-stack) below). Until then, the UI may show an API error or empty data.
+| What | Status | URL |
+|------|--------|-----|
+| Production dashboard | Public | [https://frontend-rho-flame-38.vercel.app](https://frontend-rho-flame-38.vercel.app) |
+| Source repository | Public | [https://github.com/Gosula16/STOCK-PREDICT](https://github.com/Gosula16/STOCK-PREDICT) |
+| Vercel project settings | Requires owner login | [https://vercel.com/125015164-4269s-projects/frontend/settings/environment-variables](https://vercel.com/125015164-4269s-projects/frontend/settings/environment-variables) |
 
----
-
-## Contents
-
-- [Architecture](#architecture)
-- [Production operations (CI, health, Docker)](#production-operations-ci-health-docker)
-- [Quick start (local)](#quick-start-local)
-- [Production deployment (full stack)](#production-deployment-full-stack)
-- [Environment variables](#environment-variables-reference)
-- [API surface](#api-surface-via-gateway)
-- [Groww broker](#groww-live-ltp--optional-orders)
-- [Hugging Face (optional)](#hugging-face-optional)
-- [Security & compliance](#security-and-compliance)
-- [Wind demo (legacy)](#wind-demo-legacy)
-
----
+Important: the dashboard is live, but signals, broker status, and control actions need a public gateway URL plus the shared `API_SECRET`. Without that backend deployment, the frontend can load while API panels stay empty or show an error.
 
 ## Architecture
 
+```text
+Browser -> Next.js (Vercel) -> /api/gateway/* proxy
+        -> NestJS gateway -> FastAPI orchestrator -> Redis (optional) / Groww / HF
 ```
-Browser → Next.js (Vercel) → /api/gateway/* (server proxy)
-         → NestJS gateway (public URL) → FastAPI orchestrator → Redis (optional) / Groww / HF
-```
 
-- **`frontend/`** — Next.js 15 dashboard (signals, LTP column, kill switch, Groww status).
-- **`gateway/`** — NestJS: forwards `Authorization: Bearer` to the orchestrator.
-- **`orchestrator/`** — FastAPI: pipeline, Groww integration, risk checks, audit log, optional HF.
-- **`app/`** — Legacy Streamlit wind app (optional).
+- `frontend/` - Next.js 15 dashboard and API proxy route.
+- `gateway/` - NestJS public API facade and readiness endpoint.
+- `orchestrator/` - FastAPI trading control plane, broker hooks, risk checks, audit logging.
+- `app/` - legacy Streamlit demo.
 
-**Trading alpha:** Groww + HF give real connectivity and optional sentiment; **strategy / ML alpha** is still yours to implement (features, models, backtests). This repo focuses on a **deployable control plane** with broker hooks and guardrails.
+This repo is production-oriented infrastructure, not a finished trading strategy. Broker connectivity and guardrails are here; alpha generation, backtests, compliance review, and operational maturity are still on you.
 
----
+## Production status
 
-## Production operations (CI, health, Docker)
+What is already in place:
 
-| Capability | Details |
-|------------|---------|
-| **CI** | [`.github/workflows/ci.yml`](.github/workflows/ci.yml) — builds frontend + gateway, runs ESLint + Next build, `pytest` on orchestrator, builds both Docker images on every push/PR to `main`/`master`. |
-| **Health** | Orchestrator `GET /health` (liveness). Orchestrator `GET /ready` — `200` if Redis is unset or ping OK; `503` if Redis is configured but unreachable. |
-| **Gateway readiness** | `GET /api/health` — process up. `GET /api/ready` — aggregates orchestrator `/ready` (use for load balancers). |
-| **Strong secrets in prod** | With `ENVIRONMENT=production` (orchestrator) or `NODE_ENV=production` (gateway), **`API_SECRET` must be ≥ 32 characters** and cannot be a default like `dev-change-me`. |
-| **CORS** | Orchestrator: `CORS_ORIGINS` (comma-separated or `*`). Gateway: `CORS_ORIGIN` (comma-separated). Prefer explicit dashboard origins in public production. |
-| **Docker** | Non-root `rentai` user (orchestrator); `node` user (gateway). `HEALTHCHECK` in Dockerfiles. |
-| **Compose (prod profile)** | `docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build` — restart policies, Redis + orchestrator + gateway health ordering. **Requires** a long `API_SECRET` in `.env`. |
-| **Automation** | Root [`Makefile`](Makefile): `make test`, `make prod-up`, `make docker-build` (Unix Make; on Windows use the same commands manually or Git Bash). |
+- Frontend production build succeeds.
+- Frontend lint passes.
+- Gateway build succeeds.
+- Orchestrator test suite passes.
+- CI builds frontend, gateway, orchestrator, and both Docker images on pushes and pull requests.
+- Health and readiness endpoints exist for gateway and orchestrator.
+- Production secret validation is enforced for gateway and orchestrator.
 
----
+What still must be provided by the operator:
+
+- Public hosting for the orchestrator.
+- Public hosting for the gateway.
+- Real environment variables in Vercel and backend hosts.
+- Monitoring, alerting, backups, incident response, and legal/compliance review before live money.
 
 ## Quick start (local)
 
-### 1) Backend with Docker
+### Docker stack
 
 From the repo root:
 
@@ -75,30 +60,32 @@ copy .env.example .env
 docker compose up --build
 ```
 
-Defaults: Redis `6379`, orchestrator `http://localhost:8000`, gateway `http://localhost:3001`, `API_SECRET=dev-change-me`.
+Defaults:
 
-### 2) Frontend
+- Redis: `localhost:6379`
+- Orchestrator: `http://localhost:8000`
+- Gateway: `http://localhost:3001`
+- Shared secret: `API_SECRET=dev-change-me`
+
+### Frontend
 
 ```powershell
 cd frontend
 copy ..\.env.example .env.local
-```
-
-Edit `frontend/.env.local`:
-
-- `GATEWAY_URL=http://localhost:3001`
-- `API_SECRET` — same as gateway/orchestrator (`dev-change-me` unless changed)
-
-```powershell
 npm install
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000).
+Set these in `frontend/.env.local`:
 
-### 3) Without Docker
+- `GATEWAY_URL=http://localhost:3001`
+- `API_SECRET=dev-change-me`
 
-**Orchestrator**
+Then open [http://localhost:3000](http://localhost:3000).
+
+### Without Docker
+
+Orchestrator:
 
 ```powershell
 cd orchestrator
@@ -109,7 +96,7 @@ $env:API_SECRET="dev-change-me"
 uvicorn app.main:app --reload --port 8000
 ```
 
-**Gateway**
+Gateway:
 
 ```powershell
 cd gateway
@@ -120,172 +107,160 @@ $env:PORT="3001"
 npm run start:dev
 ```
 
-Then run the frontend as above.
+## Production deployment
 
----
+### 1. Deploy the orchestrator
 
-## Production deployment (full stack)
+Deploy `orchestrator/` to a host that supports Docker or Python, such as Render, Railway, Fly.io, AWS, or your own VPS.
 
-### Prerequisites
+Required environment variables:
 
-- GitHub repo pushed (e.g. [STOCK-PREDICT](https://github.com/Gosula16/STOCK-PREDICT)).
-- Strong random **`API_SECRET`** (shared across gateway, orchestrator, and Vercel server env).
-- **Never** commit `.env`, Groww JWT, or Hugging Face tokens.
+- `API_SECRET` - 32+ random characters
+- `ENVIRONMENT=production`
 
-### Step 1 — Deploy the orchestrator (API backend)
+Optional environment variables:
 
-Use any host that runs Docker or Python (examples: [Render](https://render.com), [Railway](https://railway.app), [Fly.io](https://fly.io), AWS, VPS).
+- `REDIS_URL`
+- `CORS_ORIGINS`
+- `BROKER_MODE`
+- `GROWW_AUTH_TOKEN`
+- `GROWW_INSTRUMENTS_JSON`
+- `GROWW_ALLOW_BROKER_MUTATIONS`
+- `HUGGINGFACE_API_TOKEN` or `HF_TOKEN`
+- `HF_ENABLE_IN_PIPELINE`
+- `RISK_*`
 
-**Render (Docker) example**
+Health checks:
 
-1. [Render Dashboard](https://dashboard.render.com) → **New +** → **Web Service**.
-2. Connect **GitHub** → select `Gosula16/STOCK-PREDICT`.
-3. **Root Directory:** leave empty or repo root.
-4. **Runtime:** Docker. **Dockerfile path:** `orchestrator/Dockerfile`. **Docker build context:** `orchestrator` (if the UI asks for context directory).
-5. **Instance type:** Free (cold starts apply).
-6. **Environment variables:**
-   - `API_SECRET` — long random string (save it).
-   - Optional: `REDIS_URL`, `GROWW_*`, `HUGGINGFACE_*`, `BROKER_MODE`, risk vars — see [Environment variables](#environment-variables-reference).
-7. Deploy and copy the public URL, e.g. `https://stock-predict-orchestrator.onrender.com`.
+- Liveness: `/health`
+- Readiness: `/ready`
 
-Health check (browser or curl): `https://<your-orchestrator-host>/health`
+### 2. Deploy the gateway
 
-### Step 2 — Deploy the gateway
+Deploy `gateway/` separately and point it at the orchestrator.
 
-1. **New Web Service** on the same or another host.
-2. **Dockerfile path:** `gateway/Dockerfile`. **Docker build context:** `gateway`.
-3. **Environment variables:**
-   - `API_SECRET` — **same** as orchestrator.
-   - `ORCHESTRATOR_URL` — `https://<your-orchestrator-host>` (no trailing slash).
-   - `PORT` — often injected by the platform (Render/Railway set `PORT` automatically; the app reads it).
-   - Optional: `CORS_ORIGIN=https://frontend-rho-flame-38.vercel.app` (your real dashboard origin).
-4. Deploy and copy the URL, e.g. `https://stock-predict-gateway.onrender.com`.
+Required environment variables:
 
-Check: `https://<your-gateway-host>/api/health` should return JSON.
+- `API_SECRET` - same value as the orchestrator
+- `ORCHESTRATOR_URL=https://your-orchestrator-host`
+- `NODE_ENV=production`
 
-### Step 3 — Connect the Vercel dashboard to the gateway
+Optional environment variables:
 
-1. Open [Vercel project → Settings → Environment Variables](https://vercel.com/125015164-4269s-projects/frontend/settings/environment-variables).
-2. Add for **Production** (and Preview if you want):
-   - **`GATEWAY_URL`** = `https://<your-gateway-host>` (no `/api` suffix).
-   - **`API_SECRET`** = same secret as gateway/orchestrator.
-3. **Redeploy** the latest deployment (Deployments → ⋮ → Redeploy), or push a commit to trigger a Git-connected build.
+- `PORT`
+- `CORS_ORIGIN=https://your-frontend-domain`
 
-**CLI alternative** (from `frontend/`):
+Health checks:
 
-```powershell
-cd frontend
-npx vercel env add GATEWAY_URL production
-npx vercel env add API_SECRET production
-npx vercel deploy --prod --yes
-```
+- Liveness: `/api/health`
+- Readiness: `/api/ready`
 
-### Step 4 — GitHub ↔ Vercel (automatic deploys on push)
+### 3. Connect Vercel to the gateway
 
-1. Vercel → project **Settings → Git** → connect [https://github.com/Gosula16/STOCK-PREDICT](https://github.com/Gosula16/STOCK-PREDICT).
-2. Set **Root Directory** to `frontend`.
-3. Each push to the linked branch triggers a new production (or preview) build.
+In the Vercel project environment settings, add:
 
-### Current production frontend (already deployed)
+- `GATEWAY_URL=https://your-gateway-host`
+- `API_SECRET=the-same-shared-secret`
 
-- **URL:** [https://frontend-rho-flame-38.vercel.app](https://frontend-rho-flame-38.vercel.app)
-- Deployed with Vercel CLI under project `frontend`; alias may change if the project is renamed — check the Vercel dashboard for the canonical production domain.
+Then redeploy the frontend.
 
----
+### 4. Enable automatic frontend deploys
 
-## Environment variables reference
+Connect the Vercel project to the GitHub repo and set the root directory to `frontend`.
 
-| Variable | Where | Purpose |
-|----------|--------|---------|
-| `ENVIRONMENT` | Orchestrator | `development` / `staging` / `production` (strict secret in prod) |
-| `NODE_ENV` | Gateway | Set `production` with strong `API_SECRET` |
-| `CORS_ORIGINS` | Orchestrator | Comma-separated allowed origins or `*` |
-| `API_SECRET` | Gateway, orchestrator, **Vercel** | Bearer token for internal API |
-| `GATEWAY_URL` | **Vercel only** | Public gateway base URL |
-| `ORCHESTRATOR_URL` | Gateway | Orchestrator base URL |
-| `GROWW_AUTH_TOKEN` | Orchestrator | Groww JWT |
-| `GROWW_INSTRUMENTS_JSON` | Orchestrator | Instrument list for LTP |
-| `GROWW_ALLOW_BROKER_MUTATIONS` | Orchestrator | Enable place/cancel/modify |
-| `BROKER_MODE` | Orchestrator | `paper` / `live` |
-| `HUGGINGFACE_API_TOKEN` / `HF_TOKEN` | Orchestrator | HF Inference API |
-| `HF_ENABLE_IN_PIPELINE` | Orchestrator | Optional sentiment in pipeline |
-| `RISK_*` | Orchestrator | See `.env.example` |
+## Environment variables
 
-See [`.env.example`](.env.example) for the full list and comments.
+| Variable | Service | Purpose |
+|----------|---------|---------|
+| `API_SECRET` | Gateway, orchestrator, Vercel | Shared bearer token for protected API routes |
+| `GATEWAY_URL` | Vercel frontend | Public gateway base URL |
+| `ORCHESTRATOR_URL` | Gateway | Base URL for orchestrator forwarding |
+| `ENVIRONMENT` | Orchestrator | `development`, `staging`, or `production` |
+| `NODE_ENV` | Gateway | Use `production` in hosted deployments |
+| `CORS_ORIGINS` | Orchestrator | Allowed frontend origins |
+| `CORS_ORIGIN` | Gateway | Allowed frontend origins |
+| `REDIS_URL` | Orchestrator | Optional state and readiness dependency |
+| `BROKER_MODE` | Orchestrator | `paper` or `live` |
+| `GROWW_AUTH_TOKEN` | Orchestrator | Groww auth token |
+| `GROWW_INSTRUMENTS_JSON` | Orchestrator | Instrument list for LTP lookup |
+| `GROWW_ALLOW_BROKER_MUTATIONS` | Orchestrator | Enable place, cancel, modify |
+| `HUGGINGFACE_API_TOKEN` / `HF_TOKEN` | Orchestrator | Hugging Face inference access |
+| `HF_ENABLE_IN_PIPELINE` | Orchestrator | Optional sentiment hook in pipeline |
+| `RISK_*` | Orchestrator | Risk caps and order validation |
 
----
+See [`.env.example`](.env.example) for the full list.
 
-## API surface (via gateway)
+## API surface
 
-All `/api/v1/*` routes expect `Authorization: Bearer <API_SECRET>` when `API_SECRET` is set (public routes: `/api/health`, `/api/ready`).
+Via the gateway, all `/api/v1/*` routes expect `Authorization: Bearer <API_SECRET>` when `API_SECRET` is set.
 
-| Method | Path | Purpose |
-|--------|------|---------|
-| GET | `/api/health` | Gateway liveness |
-| GET | `/api/ready` | Gateway + orchestrator readiness |
-| GET | `/api/v1/signals` | Signals (+ optional LTP / HF) |
-| GET | `/api/v1/control/status` | Kill switch |
-| POST | `/api/v1/control/trading` | `{"enabled": bool}` |
-| POST | `/api/v1/pipeline/tick` | Pipeline tick |
-| GET | `/api/v1/broker/status` | Groww + risk flags |
-| GET | `/api/v1/broker/orders` | Orders list (query params) |
-| GET | `/api/v1/broker/holdings` | Holdings |
-| GET | `/api/v1/broker/orders/status` | Order status (query) |
-| POST | `/api/v1/broker/margins/preview` | Margin preview |
-| POST | `/api/v1/broker/orders/place` | Place order |
-| POST | `/api/v1/broker/orders/cancel` | Cancel |
-| POST | `/api/v1/broker/orders/modify` | Modify |
-| POST | `/api/v1/ml/sentiment` | HF sentiment on `text` |
+Public routes:
 
-Orchestrator also exposes `/health` and `/ready` (no auth) plus `/v1/*` on port **8000** if called directly.
+- `GET /api/health`
+- `GET /api/ready`
 
-**Audit:** JSON lines to `logs/audit.jsonl` + stdout (`logs/` is gitignored).
+Protected routes:
 
----
+- `GET /api/v1/signals`
+- `GET /api/v1/control/status`
+- `POST /api/v1/control/trading`
+- `POST /api/v1/pipeline/tick`
+- `GET /api/v1/broker/status`
+- `GET /api/v1/broker/orders`
+- `GET /api/v1/broker/holdings`
+- `GET /api/v1/broker/orders/status`
+- `POST /api/v1/broker/margins/preview`
+- `POST /api/v1/broker/orders/place`
+- `POST /api/v1/broker/orders/cancel`
+- `POST /api/v1/broker/orders/modify`
+- `POST /api/v1/ml/sentiment`
 
-## Groww (live LTP + optional orders)
+The orchestrator also exposes `/health`, `/ready`, and the same functional routes under `/v1/*`.
 
-1. [Groww Trade API](https://www.groww.in/trade-api) — create credentials and copy the **auth JWT**.
-2. Orchestrator env: `GROWW_AUTH_TOKEN`, `GROWW_INSTRUMENTS_JSON` (tokens from [instrument CSV](https://growwapi-assets.groww.in/instruments/instrument.csv)).
+## Groww
 
-Example instruments:
+To use Groww:
+
+1. Create credentials through the [Groww Trade API](https://www.groww.in/trade-api).
+2. Put the auth token in `GROWW_AUTH_TOKEN`.
+3. Put instrument metadata in `GROWW_INSTRUMENTS_JSON`.
+4. Keep `BROKER_MODE=paper` until you have validated the system.
+5. Only set `GROWW_ALLOW_BROKER_MUTATIONS=true` when you intentionally want real broker actions enabled.
+
+Example instrument payload:
 
 ```json
 [{"exchange":"NSE","segment":"CASH","exchange_token":"2885","symbol":"RELIANCE"}]
 ```
 
-**Live orders:** `BROKER_MODE=live`, `GROWW_ALLOW_BROKER_MUTATIONS=true` (or legacy `GROWW_ALLOW_PLACE_ORDER`), kill switch on for new **places**; see README risk vars.
+## Hugging Face
 
-Never commit Groww tokens.
+Optional sentiment endpoint:
 
----
+- Set `HUGGINGFACE_API_TOKEN` or `HF_TOKEN` on the orchestrator.
+- Call `POST /api/v1/ml/sentiment` with `{"text":"..."}`.
+- Optionally enable pipeline use with `HF_ENABLE_IN_PIPELINE=true`.
 
-## Hugging Face (optional)
-
-- `HUGGINGFACE_API_TOKEN` or `HF_TOKEN` on the orchestrator only.
-- `HF_ENABLE_IN_PIPELINE=true` for optional FinBERT-style nudge (not a full trading model).
-- Revoke leaked tokens at [https://huggingface.co/settings/tokens](https://huggingface.co/settings/tokens).
-
----
+If any Hugging Face token was pasted into chat or any public place, revoke it and replace it.
 
 ## Security and compliance
 
-- Automation can amplify losses; use **paper** / tiny size first.
-- Indian markets: follow **SEBI**, exchange, and broker rules.
-- This project is **not** legal or investment advice.
+- Never commit `.env` files, broker tokens, or Hugging Face tokens.
+- Rotate any token that has already been exposed in chat or screenshots.
+- Use paper trading and strict limits before live deployment.
+- Follow SEBI, exchange, broker, tax, and legal requirements in your jurisdiction.
 
----
+## Validation run
 
-## Wind demo (legacy)
+Checked locally on March 28, 2026:
 
-```powershell
-cd app
-pip install -r requirements.txt
-streamlit run app.py
-```
+- `frontend`: `npm run build`
+- `frontend`: `npm run lint`
+- `gateway`: `npm run build`
+- `orchestrator`: `pytest`
 
----
+All of the above passed in this workspace.
 
 ## License
 
-Add a `LICENSE` file if you open-source the repo publicly.
+Add a `LICENSE` file before publishing the repo broadly.

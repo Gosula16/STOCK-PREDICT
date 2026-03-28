@@ -1,0 +1,51 @@
+services:
+  - type: web
+    name: stock-predict-orchestrator
+    runtime: docker
+    rootDir: orchestrator
+    dockerfilePath: ./Dockerfile
+    plan: free
+    autoDeploy: true
+    healthCheckPath: /health
+    envVars:
+      - key: ENVIRONMENT
+        value: production
+      - key: API_SECRET
+        sync: false
+      - key: BROKER_MODE
+        value: live
+      - key: GROWW_AUTH_TOKEN
+        sync: false
+      - key: GROWW_INSTRUMENTS_JSON
+        sync: false
+      - key: GROWW_ALLOW_BROKER_MUTATIONS
+        value: "true"
+      - key: HF_ENABLE_IN_PIPELINE
+        value: "true"
+      - key: HUGGINGFACE_API_TOKEN
+        sync: false
+      - key: RISK_REQUIRE_LIMIT_PRICE
+        value: "true"
+      - key: CORS_ORIGINS
+        value: https://frontend-rho-flame-38.vercel.app
+
+  - type: web
+    name: stock-predict-gateway
+    runtime: docker
+    rootDir: gateway
+    dockerfilePath: ./Dockerfile
+    plan: free
+    autoDeploy: true
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: API_SECRET
+        sync: false
+      - key: ORCHESTRATOR_URL
+        fromService:
+          type: web
+          name: stock-predict-orchestrator
+          envVarKey: RENDER_EXTERNAL_URL
+      - key: CORS_ORIGIN
+        value: https://frontend-rho-flame-38.vercel.app

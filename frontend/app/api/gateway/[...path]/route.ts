@@ -33,12 +33,21 @@ async function proxy(req: NextRequest, segments: string[]) {
       init.body = text;
     }
   }
-  const res = await fetch(url, init);
-  const body = await res.text();
-  return new NextResponse(body, {
-    status: res.status,
-    headers: { "Content-Type": res.headers.get("content-type") ?? "application/json" },
-  });
+  try {
+    const res = await fetch(url, init);
+    const body = await res.text();
+    return new NextResponse(body, {
+      status: res.status,
+      headers: {
+        "Content-Type": res.headers.get("content-type") ?? "application/json",
+      },
+    });
+  } catch {
+    return NextResponse.json(
+      { detail: "Gateway unreachable. Check GATEWAY_URL and backend health." },
+      { status: 503 },
+    );
+  }
 }
 
 export async function GET(

@@ -24,10 +24,27 @@ type BrokerStatus = {
     active_segments?: string[];
   } | null;
   instruments?: number;
+  groww_allow_broker_mutations?: boolean;
   groww_allow_place_order?: boolean;
   broker_mode?: string;
   detail?: string;
 };
+
+async function readJson<T extends { detail?: string }>(
+  response: Response,
+): Promise<T> {
+  const text = await response.text();
+  if (!text.trim()) {
+    return { detail: `Empty response (HTTP ${response.status})` } as T;
+  }
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    return {
+      detail: `Non-JSON response from API (HTTP ${response.status})`,
+    } as T;
+  }
+}
 
 function decisionStyle(d: string) {
   if (d === "BUY") return "text-emerald-400 bg-emerald-950/60 border-emerald-800";
@@ -48,7 +65,7 @@ export default function Dashboard() {
     setError(null);
     try {
       const r = await fetch("/api/gateway/v1/signals", { cache: "no-store" });
-      const j: SignalsResponse = await r.json();
+      const j = await readJson<SignalsResponse>(r);
       if (!r.ok) {
         setError(j.detail ?? `HTTP ${r.status}`);
         setSignals([]);
@@ -67,7 +84,7 @@ export default function Dashboard() {
   const refreshBroker = useCallback(async () => {
     try {
       const r = await fetch("/api/gateway/v1/broker/status", { cache: "no-store" });
-      const j: BrokerStatus = await r.json();
+      const j = await readJson<BrokerStatus>(r);
       if (r.ok) setBroker(j);
       else setBroker(null);
     } catch {
@@ -89,12 +106,12 @@ export default function Dashboard() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ enabled }),
       });
-      const j = await r.json();
+      const j = await readJson<SignalsResponse & { trading_enabled?: boolean }>(r);
       if (!r.ok) {
-        setError((j as SignalsResponse).detail ?? `HTTP ${r.status}`);
+        setError(j.detail ?? `HTTP ${r.status}`);
         return;
       }
-      setTradingEnabled(!!(j as { trading_enabled?: boolean }).trading_enabled);
+      setTradingEnabled(!!j.trading_enabled);
       await refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Request failed");
@@ -102,6 +119,9 @@ export default function Dashboard() {
       setActionBusy(false);
     }
   };
+
+  const mutationsEnabled =
+    broker?.groww_allow_broker_mutations || broker?.groww_allow_place_order;
 
   return (
     <div className="min-h-screen bg-[#070b12] text-zinc-100">
@@ -115,11 +135,11 @@ export default function Dashboard() {
               Trading control center
             </h1>
             <p className="mt-2 max-w-xl text-sm text-zinc-400">
-              NSE · NIFTY 50 scope · Optional Groww live LTP when{" "}
+              NSE | NIFTY 50 scope | Optional Groww live LTP when{" "}
               <code className="rounded bg-zinc-800 px-1 text-zinc-300">
                 GROWW_AUTH_TOKEN
               </code>{" "}
-              + instrument tokens are set on the orchestrator.
+              and instrument tokens are set on the orchestrator.
             </p>
           </div>
           <div className="flex flex-wrap gap-3">
@@ -132,7 +152,7 @@ export default function Dashboard() {
               disabled={loading}
               className="rounded-lg border border-zinc-700 bg-zinc-900 px-4 py-2 text-sm font-medium text-zinc-100 hover:bg-zinc-800 disabled:opacity-50"
             >
-              {loading ? "Refreshing…" : "Refresh signals"}
+              {loading ? "Refreshing..." : "Refresh signals"}
             </button>
             <button
               type="button"
@@ -161,14 +181,10 @@ export default function Dashboard() {
               Trading state
             </p>
             <p className="mt-2 text-lg font-medium">
-              {tradingEnabled === null
-                ? "—"
-                : tradingEnabled
-                  ? "Active"
-                  : "Halted"}
+              {tradingEnabled === null ? "-" : tradingEnabled ? "Active" : "Halted"}
             </p>
             <p className="mt-1 text-sm text-zinc-500">
-              Orchestrator respects kill switch before any execution path.
+              Orchestrator respects the kill switch before any execution path.
             </p>
           </div>
           <div className="rounded-xl border border-zinc-800 bg-zinc-950/50 p-5">
@@ -177,8 +193,8 @@ export default function Dashboard() {
             </p>
             <p className="mt-2 text-lg font-medium">{signals.length} symbols</p>
             <p className="mt-1 text-sm text-zinc-500">
-              LTP from Groww when configured; decisions are still placeholders until
-              your model ships.
+              LTP comes from Groww when configured; decisions remain placeholders
+              until your strategy and model logic are implemented.
             </p>
           </div>
           <div className="rounded-xl border border-zinc-800 bg-zinc-950/50 p-5">
@@ -190,19 +206,19 @@ export default function Dashboard() {
             </p>
             <p className="mt-1 text-sm text-zinc-500">
               {broker?.groww_configured && broker.profile?.ucc
-                ? `UCC ${broker.profile.ucc} · ${broker.instruments ?? 0} instruments`
-                : "Set GROWW_AUTH_TOKEN + GROWW_INSTRUMENTS_JSON on orchestrator."}
+                ? `UCC ${broker.profile.ucc} | ${broker.instruments ?? 0} instruments`
+                : "Set GROWW_AUTH_TOKEN and GROWW_INSTRUMENTS_JSON on orchestrator."}
             </p>
-            {broker?.groww_allow_place_order ? (
+            {mutationsEnabled ? (
               <p className="mt-2 text-xs font-medium text-rose-400/90">
-                API order placement enabled — real orders possible.
+                Broker mutations enabled. Real orders are possible.
               </p>
             ) : null}
           </div>
         </section>
 
         <p className="text-center text-xs text-zinc-600">
-          Stack: Next.js → NestJS gateway → FastAPI orchestrator · Redis optional
+          Stack: Next.js {"->"} NestJS gateway {"->"} FastAPI orchestrator | Redis optional
         </p>
 
         {error && (
@@ -224,7 +240,7 @@ export default function Dashboard() {
             Last traded price (LTP) comes from Groww when tokens are configured.
             Enable{" "}
             <code className="rounded bg-zinc-800 px-1">GROWW_ALLOW_BROKER_MUTATIONS</code>{" "}
-            only if you intend to send real orders via the API.
+            only if you intend to place, modify, or cancel real orders via the API.
           </p>
           <div className="mt-4 overflow-hidden rounded-xl border border-zinc-800">
             <table className="w-full text-left text-sm">
@@ -255,8 +271,8 @@ export default function Dashboard() {
                     </td>
                     <td className="px-4 py-3 font-mono text-zinc-300">
                       {s.last_price != null && s.last_price !== undefined
-                        ? `₹${Number(s.last_price).toFixed(2)}`
-                        : "—"}
+                        ? `Rs ${Number(s.last_price).toFixed(2)}`
+                        : "-"}
                     </td>
                     <td className="px-4 py-3">
                       <span
@@ -282,16 +298,13 @@ export default function Dashboard() {
           </h3>
           <ul className="mt-3 list-inside list-disc space-y-2">
             <li>
-              Groww: add tokens from the official instrument CSV; rotate any key
-              ever pasted into chat.
+              Rotate any Groww or Hugging Face token that was ever pasted into chat.
             </li>
             <li>
-              Persist trades and model versions in MongoDB; publish events on
-              Redis/Kafka.
+              Persist trades, model versions, and audit events in durable storage.
             </li>
             <li>
-              Add weekly retrain job, risk limits, and alerting (Telegram /
-              email).
+              Add alerting, backups, and deployment monitoring before real-money use.
             </li>
           </ul>
         </section>
