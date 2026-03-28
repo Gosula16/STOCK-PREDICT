@@ -1,0 +1,60 @@
+# Production-oriented overrides (use with docker-compose.yml).
+#
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+#
+# Requirements:
+# - .env with API_SECRET at least 32 characters (not dev-change-me).
+# - Services run with ENVIRONMENT/NODE_ENV=production (enforced below).
+
+services:
+  redis:
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+
+  orchestrator:
+    restart: unless-stopped
+    environment:
+      ENVIRONMENT: production
+      CORS_ORIGINS: ${CORS_ORIGINS:-*}
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/ready', timeout=5)",
+        ]
+      interval: 20s
+      timeout: 8s
+      retries: 5
+      start_period: 45s
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  gateway:
+    restart: unless-stopped
+    environment:
+      ENVIRONMENT: production
+      NODE_ENV: production
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "const p=process.env.PORT||'3001';require('http').get('http://127.0.0.1:'+p+'/api/ready',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))",
+        ]
+      interval: 25s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
+    depends_on:
+      orchestrator:
+        condition: service_healthy

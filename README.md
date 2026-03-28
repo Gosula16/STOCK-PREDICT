@@ -21,6 +21,7 @@ Monorepo for a **personal AI-driven trading system**: Next.js dashboard, NestJS 
 ## Contents
 
 - [Architecture](#architecture)
+- [Production operations (CI, health, Docker)](#production-operations-ci-health-docker)
 - [Quick start (local)](#quick-start-local)
 - [Production deployment (full stack)](#production-deployment-full-stack)
 - [Environment variables](#environment-variables-reference)
@@ -43,6 +44,23 @@ Browser → Next.js (Vercel) → /api/gateway/* (server proxy)
 - **`gateway/`** — NestJS: forwards `Authorization: Bearer` to the orchestrator.
 - **`orchestrator/`** — FastAPI: pipeline, Groww integration, risk checks, audit log, optional HF.
 - **`app/`** — Legacy Streamlit wind app (optional).
+
+**Trading alpha:** Groww + HF give real connectivity and optional sentiment; **strategy / ML alpha** is still yours to implement (features, models, backtests). This repo focuses on a **deployable control plane** with broker hooks and guardrails.
+
+---
+
+## Production operations (CI, health, Docker)
+
+| Capability | Details |
+|------------|---------|
+| **CI** | [`.github/workflows/ci.yml`](.github/workflows/ci.yml) — builds frontend + gateway, runs ESLint + Next build, `pytest` on orchestrator, builds both Docker images on every push/PR to `main`/`master`. |
+| **Health** | Orchestrator `GET /health` (liveness). Orchestrator `GET /ready` — `200` if Redis is unset or ping OK; `503` if Redis is configured but unreachable. |
+| **Gateway readiness** | `GET /api/health` — process up. `GET /api/ready` — aggregates orchestrator `/ready` (use for load balancers). |
+| **Strong secrets in prod** | With `ENVIRONMENT=production` (orchestrator) or `NODE_ENV=production` (gateway), **`API_SECRET` must be ≥ 32 characters** and cannot be a default like `dev-change-me`. |
+| **CORS** | Orchestrator: `CORS_ORIGINS` (comma-separated or `*`). Gateway: `CORS_ORIGIN` (comma-separated). Prefer explicit dashboard origins in public production. |
+| **Docker** | Non-root `rentai` user (orchestrator); `node` user (gateway). `HEALTHCHECK` in Dockerfiles. |
+| **Compose (prod profile)** | `docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build` — restart policies, Redis + orchestrator + gateway health ordering. **Requires** a long `API_SECRET` in `.env`. |
+| **Automation** | Root [`Makefile`](Makefile): `make test`, `make prod-up`, `make docker-build` (Unix Make; on Windows use the same commands manually or Git Bash). |
 
 ---
 
@@ -179,6 +197,9 @@ npx vercel deploy --prod --yes
 
 | Variable | Where | Purpose |
 |----------|--------|---------|
+| `ENVIRONMENT` | Orchestrator | `development` / `staging` / `production` (strict secret in prod) |
+| `NODE_ENV` | Gateway | Set `production` with strong `API_SECRET` |
+| `CORS_ORIGINS` | Orchestrator | Comma-separated allowed origins or `*` |
 | `API_SECRET` | Gateway, orchestrator, **Vercel** | Bearer token for internal API |
 | `GATEWAY_URL` | **Vercel only** | Public gateway base URL |
 | `ORCHESTRATOR_URL` | Gateway | Orchestrator base URL |
@@ -196,11 +217,12 @@ See [`.env.example`](.env.example) for the full list and comments.
 
 ## API surface (via gateway)
 
-All `/api/v1/*` routes expect `Authorization: Bearer <API_SECRET>` when `API_SECRET` is set (except `GET /api/health`).
+All `/api/v1/*` routes expect `Authorization: Bearer <API_SECRET>` when `API_SECRET` is set (public routes: `/api/health`, `/api/ready`).
 
 | Method | Path | Purpose |
 |--------|------|---------|
-| GET | `/api/health` | Gateway health |
+| GET | `/api/health` | Gateway liveness |
+| GET | `/api/ready` | Gateway + orchestrator readiness |
 | GET | `/api/v1/signals` | Signals (+ optional LTP / HF) |
 | GET | `/api/v1/control/status` | Kill switch |
 | POST | `/api/v1/control/trading` | `{"enabled": bool}` |
@@ -215,7 +237,7 @@ All `/api/v1/*` routes expect `Authorization: Bearer <API_SECRET>` when `API_SEC
 | POST | `/api/v1/broker/orders/modify` | Modify |
 | POST | `/api/v1/ml/sentiment` | HF sentiment on `text` |
 
-Orchestrator also exposes the same paths under `/v1/*` on port **8000** if called directly.
+Orchestrator also exposes `/health` and `/ready` (no auth) plus `/v1/*` on port **8000** if called directly.
 
 **Audit:** JSON lines to `logs/audit.jsonl` + stdout (`logs/` is gitignored).
 

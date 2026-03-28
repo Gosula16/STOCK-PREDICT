@@ -7,6 +7,11 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
+    # development | staging | production — production enforces strong API_SECRET
+    environment: str = "development"
+    # Comma-separated origins for CORS; "*" for allow all (avoid in public production)
+    cors_origins: str = "*"
+
     redis_url: str | None = None
     api_secret: str = "dev-change-me"
     market: str = "NSE"
@@ -46,6 +51,13 @@ class Settings(BaseSettings):
         if v is None:
             return "[]"
         return str(v).strip() or "[]"
+
+
+def cors_origin_list(cors_origins: str) -> list[str]:
+    raw = (cors_origins or "*").strip()
+    if raw == "*":
+        return ["*"]
+    return [o.strip() for o in raw.split(",") if o.strip()]
 
 
 @lru_cache

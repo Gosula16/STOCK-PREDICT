@@ -2,6 +2,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from app.agents.pipeline import run_pipeline_tick
 from app.brokers.groww import (
@@ -15,7 +16,8 @@ from app.brokers.groww import (
     parse_instruments_json,
     place_order,
 )
-from app.config import Settings, get_settings
+from app.config import Settings, cors_origin_list, get_settings
+from app.core.production import validate_production_settings
 from app.ml.hf_infer import infer_text_sentiment
 from app.observability.audit import audit_event, setup_audit_logging
 from app.risk.execution import (
@@ -44,18 +46,52 @@ def create_app() -> FastAPI:
     async def lifespan(app: FastAPI):
         setup_audit_logging()
         s = get_settings()
-        audit_event("orchestrator_start", broker_mode=s.broker_mode)
+        validate_production_settings(s)
+        audit_event(
+            "orchestrator_start",
+            broker_mode=s.broker_mode,
+            environment=s.environment,
+        )
         yield
 
-    app = FastAPI(title="RentAI Orchestrator", version="0.2.0", lifespan=lifespan)
+    _settings = get_settings()
+    app = FastAPI(title="RentAI Orchestrator", version="0.3.0", lifespan=lifespan)
 
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],
+        allow_origins=cors_origin_list(_settings.cors_origins),
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    @app.get("/ready")
+    def ready(settings: Settings = Depends(get_settings)):
+        if not settings.redis_url:
+            return {
+                "ready": True,
+                "service": "orchestrator",
+                "dependencies": {"redis": "not_configured"},
+            }
+        try:
+            import redis as redis_lib
+
+            r = redis_lib.from_url(settings.redis_url, socket_connect_timeout=2)
+            r.ping()
+            return {
+                "ready": True,
+                "service": "orchestrator",
+                "dependencies": {"redis": "ok"},
+            }
+        except Exception as e:
+            return JSONResponse(
+                status_code=503,
+                content={
+                    "ready": False,
+                    "service": "orchestrator",
+                    "dependencies": {"redis": f"unavailable: {e!s}"},
+                },
+            )
 
     @app.get("/health")
     def health(settings: Settings = Depends(get_settings)) -> dict:
