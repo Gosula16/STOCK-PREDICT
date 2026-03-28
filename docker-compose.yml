@@ -1,0 +1,30 @@
+services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+  orchestrator:
+    build: ./orchestrator
+    ports:
+      - "8000:8000"
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      API_SECRET: ${API_SECRET:-dev-change-me}
+      MARKET: NSE
+      UNIVERSE: NIFTY50
+      BROKER_MODE: paper
+    depends_on:
+      - redis
+
+  gateway:
+    build: ./gateway
+    ports:
+      - "3001:3001"
+    environment:
+      PORT: "3001"
+      ORCHESTRATOR_URL: http://orchestrator:8000
+      API_SECRET: ${API_SECRET:-dev-change-me}
+      CORS_ORIGIN: http://localhost:3000
+    depends_on:
+      - orchestrator

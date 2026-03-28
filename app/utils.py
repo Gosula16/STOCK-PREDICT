@@ -127,13 +127,28 @@ def load_forecasts_jan2024() -> pd.DataFrame:
     return df[["startTime", "publishTime", "generation"]]
 
 
+def _to_utc_timestamp(value):
+    """Convert a date/time-like object into a pandas Timestamp in UTC."""
+
+    ts = pd.to_datetime(value)
+    if ts.tzinfo is None:
+        ts = ts.tz_localize("UTC")
+    else:
+        ts = ts.tz_convert("UTC")
+    return ts
+
+
 def build_forecast_series(
     forecasts: pd.DataFrame, horizon_hours: int, start: datetime, end: datetime
 ) -> pd.DataFrame:
     """For each target time between start and end, pick the latest forecast created at least horizon_hours before."""
 
+    # Convert user inputs (date/datetime) into UTC timestamps for proper comparison.
+    start_ts = _to_utc_timestamp(start)
+    end_ts = _to_utc_timestamp(end)
+
     # Filter to requested target window
-    mask = (forecasts["startTime"] >= pd.to_datetime(start)) & (forecasts["startTime"] <= pd.to_datetime(end))
+    mask = (forecasts["startTime"] >= start_ts) & (forecasts["startTime"] <= end_ts)
     f = forecasts.loc[mask].copy()
 
     # Compute latest allowed publish time for each target
@@ -157,8 +172,10 @@ def align_actuals_and_forecasts(
 ) -> pd.DataFrame:
     """Return combined DataFrame containing actual and selected forecast values."""
 
-    # Use target window as provided
-    act = actuals[(actuals["startTime"] >= pd.to_datetime(start)) & (actuals["startTime"] <= pd.to_datetime(end))].copy()
+    start_ts = _to_utc_timestamp(start)
+    end_ts = _to_utc_timestamp(end)
+
+    act = actuals[(actuals["startTime"] >= start_ts) & (actuals["startTime"] <= end_ts)].copy()
 
     fc = build_forecast_series(forecasts, horizon_hours, start, end)
 

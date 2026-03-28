@@ -6,6 +6,7 @@ __pycache__/
 *.env
 .env*
 venv/
+.venv/
 ENV/
 *.sqlite3
 
@@ -17,6 +18,14 @@ ENV/
 
 # Node
 node_modules/
+.next/
+dist/
+
+# Env
+!.env.example
+
+# Local scratch
+app/tmp_test.py
 
 # Logs
 *.log

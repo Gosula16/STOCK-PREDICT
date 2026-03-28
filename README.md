@@ -1,75 +1,101 @@
-# Wind Forecast Monitoring Challenge
+# RentAI — AI-assisted trading platform (Phase 2 scaffold)
 
-This repository contains a demo **Wind Power Forecast Monitoring** application and an accompanying **Jupyter notebook** for analyzing forecast errors and actual generation data for January 2024.
+Monorepo for a **personal AI-driven trading system** aligned with a real-world architecture:
 
-## Contents
+- **Frontend** (`frontend/`) — Next.js dashboard (signals, kill switch, status).
+- **API gateway** (`gateway/`) — NestJS: auth header forwarding, routing to the orchestrator.
+- **AI orchestrator** (`orchestrator/`) — FastAPI: agent pipeline stub, kill switch state (Redis optional).
+- **Legacy demo** (`app/`) — Streamlit wind forecast app (unchanged; optional).
 
-- `app/` - Streamlit-based web app that visualizes actual vs forecast wind generation and supports configurable forecast horizon.
-- `notebooks/analysis.ipynb` - Notebook exploring forecast error characteristics and recommending reliable MW capacity from wind.
-- `.gitignore` - Excludes environment files and artifacts.
+This repository is a **production-oriented scaffold**: it wires the control plane and APIs. You still need regulated data feeds, broker integration (e.g. Zerodha Kite), trained models, backtests, and compliance review before **live** capital.
 
-## Running the App (Local)
+## Quick start (local)
 
-### 1) Setup
+### 1) Backend with Docker
 
-1. Create a Python virtual environment (recommended):
+From the repo root:
 
 ```powershell
+copy .env.example .env
+docker compose up --build
+```
+
+Defaults: Redis `6379`, orchestrator `http://localhost:8000`, gateway `http://localhost:3001`, shared `API_SECRET=dev-change-me`.
+
+### 2) Frontend
+
+```powershell
+cd frontend
+copy ..\.env.example .env.local
+```
+
+Edit `frontend/.env.local`:
+
+- `GATEWAY_URL=http://localhost:3001`
+- `API_SECRET` — same value as gateway/orchestrator (`dev-change-me` unless you changed it)
+
+```powershell
+npm install
+npm run dev
+```
+
+Open [http://localhost:3000](http://localhost:3000). The UI calls **Next.js server routes** under `/api/gateway/*`, which proxy to the Nest gateway with the bearer token (the secret is **not** exposed to the browser).
+
+### 3) Without Docker (Python + Node)
+
+**Orchestrator**
+
+```powershell
+cd orchestrator
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+$env:API_SECRET="dev-change-me"
+uvicorn app.main:app --reload --port 8000
 ```
 
-2. Install dependencies:
+**Gateway**
 
 ```powershell
-pip install -r app/requirements.txt
+cd gateway
+npm install
+$env:API_SECRET="dev-change-me"
+$env:ORCHESTRATOR_URL="http://127.0.0.1:8000"
+$env:PORT="3001"
+npm run start:dev
 ```
 
-### 2) Run
+Then run the frontend as above.
 
-```powershell
-cd app
-streamlit run app.py
-```
+## API surface (via gateway)
 
-Then open the URL shown in the terminal (usually http://localhost:8501).
+| Method | Path | Purpose |
+|--------|------|---------|
+| GET | `/api/health` | Gateway health (no auth) |
+| GET | `/api/v1/signals` | Demo signals (requires `Authorization: Bearer …` if `API_SECRET` set) |
+| GET | `/api/v1/control/status` | Kill switch state |
+| POST | `/api/v1/control/trading` | Body: `{"enabled": true\|false}` |
+| POST | `/api/v1/pipeline/tick` | Run one pipeline tick |
 
-## Data Source
+Direct orchestrator URLs mirror `/v1/*` on port `8000`.
 
-This app fetches data from the ELEXON BMRS API:
+## Deploying the site (Vercel)
 
-- Actual generation: `FUELHH` dataset (filter `fuelType=WIND`)
-- Forecasts: `WINDFOR` dataset
+1. Push this repo to GitHub (or GitLab/Bitbucket).
+2. In [Vercel](https://vercel.com), **New Project** → import the repo.
+3. Set **Root Directory** to `frontend`.
+4. Add environment variables:
+   - `GATEWAY_URL` — public URL of your deployed gateway (e.g. `https://api.yourdomain.com`).
+   - `API_SECRET` — same secret as production gateway/orchestrator.
 
-> **Note:** The BMRS API may require an API key. The app is configured to read `BMRS_API_KEY` from environment variables.
+Deploy the gateway and orchestrator to any container host (Railway, Fly.io, Render, AWS, etc.) and point `GATEWAY_URL` at it. Do **not** commit real secrets; use the host’s secret manager.
 
-If `BMRS_API_KEY` is not provided, the app falls back to a bundled sample dataset (January 2024) so the UI still works offline.
+## Security and compliance
 
-## Deployment
+- Markets are risky; automation can amplify losses. Use **paper trading** until you trust the full stack.
+- Indian markets: follow SEBI/broker rules, contract notes, and tax obligations.
+- This scaffold does **not** constitute financial advice.
 
-### Heroku (example)
+## Wind demo (legacy)
 
-1. Create a new Heroku app.
-2. Set environment variables:
-   - `BMRS_API_KEY` (if required)
-3. Push the repository.
-
-### Vercel
-
-A pure Python Streamlit app is not directly supported on Vercel, but can be deployed via platforms supporting Python web apps (Heroku, Render, Streamlit Cloud).
-
-## Notebook
-
-The notebook in `notebooks/analysis.ipynb`:
-
-- Downloads January 2024 actual and forecast data.
-- Computes forecast error metrics (MAE, RMSE, quantiles).
-- Explores error variation with forecast horizon and time of day.
-- Provides a recommendation for reliable MW capacity based on historical percentiles.
-
-## Notes
-
-- This project was bootstrapped as a technical challenge submission.
-- The notebook is self-contained and uses `requests` to fetch data.
-
----
+The Streamlit app in `app/` and notebook in `notebooks/` remain available; see previous commits or run `streamlit run app/app.py` from `app/` after `pip install -r app/requirements.txt`.
