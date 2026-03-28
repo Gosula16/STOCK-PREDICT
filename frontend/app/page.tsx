@@ -7,11 +7,25 @@ type Signal = {
   decision: string;
   confidence: number;
   rationale: string;
+  last_price?: number | null;
 };
 
 type SignalsResponse = {
   trading_enabled?: boolean;
   signals?: Signal[];
+  detail?: string;
+};
+
+type BrokerStatus = {
+  groww_configured?: boolean;
+  profile?: {
+    ucc?: string;
+    nse_enabled?: boolean;
+    active_segments?: string[];
+  } | null;
+  instruments?: number;
+  groww_allow_place_order?: boolean;
+  broker_mode?: string;
   detail?: string;
 };
 
@@ -27,6 +41,7 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [actionBusy, setActionBusy] = useState(false);
+  const [broker, setBroker] = useState<BrokerStatus | null>(null);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -49,9 +64,21 @@ export default function Dashboard() {
     }
   }, []);
 
+  const refreshBroker = useCallback(async () => {
+    try {
+      const r = await fetch("/api/gateway/v1/broker/status", { cache: "no-store" });
+      const j: BrokerStatus = await r.json();
+      if (r.ok) setBroker(j);
+      else setBroker(null);
+    } catch {
+      setBroker(null);
+    }
+  }, []);
+
   useEffect(() => {
     void refresh();
-  }, [refresh]);
+    void refreshBroker();
+  }, [refresh, refreshBroker]);
 
   const toggleTrading = async (enabled: boolean) => {
     setActionBusy(true);
@@ -88,14 +115,20 @@ export default function Dashboard() {
               Trading control center
             </h1>
             <p className="mt-2 max-w-xl text-sm text-zinc-400">
-              NSE · NIFTY 50 scope · Agentic pipeline (demo signals). Wire broker
-              APIs and trained models before live capital.
+              NSE · NIFTY 50 scope · Optional Groww live LTP when{" "}
+              <code className="rounded bg-zinc-800 px-1 text-zinc-300">
+                GROWW_AUTH_TOKEN
+              </code>{" "}
+              + instrument tokens are set on the orchestrator.
             </p>
           </div>
           <div className="flex flex-wrap gap-3">
             <button
               type="button"
-              onClick={() => void refresh()}
+              onClick={() => {
+                void refresh();
+                void refreshBroker();
+              }}
               disabled={loading}
               className="rounded-lg border border-zinc-700 bg-zinc-900 px-4 py-2 text-sm font-medium text-zinc-100 hover:bg-zinc-800 disabled:opacity-50"
             >
@@ -144,18 +177,33 @@ export default function Dashboard() {
             </p>
             <p className="mt-2 text-lg font-medium">{signals.length} symbols</p>
             <p className="mt-1 text-sm text-zinc-500">
-              Demo pipeline output; replace with live features + models.
+              LTP from Groww when configured; decisions are still placeholders until
+              your model ships.
             </p>
           </div>
           <div className="rounded-xl border border-zinc-800 bg-zinc-950/50 p-5">
             <p className="text-xs uppercase tracking-wider text-zinc-500">
-              Stack
+              Groww
             </p>
-            <p className="mt-2 text-sm text-zinc-300">
-              Next.js → NestJS gateway → FastAPI orchestrator → Redis (optional)
+            <p className="mt-2 text-lg font-medium">
+              {broker?.groww_configured ? "Connected" : "Not configured"}
             </p>
+            <p className="mt-1 text-sm text-zinc-500">
+              {broker?.groww_configured && broker.profile?.ucc
+                ? `UCC ${broker.profile.ucc} · ${broker.instruments ?? 0} instruments`
+                : "Set GROWW_AUTH_TOKEN + GROWW_INSTRUMENTS_JSON on orchestrator."}
+            </p>
+            {broker?.groww_allow_place_order ? (
+              <p className="mt-2 text-xs font-medium text-rose-400/90">
+                API order placement enabled — real orders possible.
+              </p>
+            ) : null}
           </div>
         </section>
+
+        <p className="text-center text-xs text-zinc-600">
+          Stack: Next.js → NestJS gateway → FastAPI orchestrator · Redis optional
+        </p>
 
         {error && (
           <div className="rounded-lg border border-amber-900/60 bg-amber-950/30 px-4 py-3 text-sm text-amber-100">
@@ -173,14 +221,17 @@ export default function Dashboard() {
         <section>
           <h2 className="text-lg font-semibold tracking-tight">Live signals</h2>
           <p className="mt-1 text-sm text-zinc-500">
-            Probabilistic decisions with confidence — execution layer not enabled
-            in this scaffold.
+            Last traded price (LTP) comes from Groww when tokens are configured.
+            Enable{" "}
+            <code className="rounded bg-zinc-800 px-1">GROWW_ALLOW_PLACE_ORDER</code>{" "}
+            only if you intend to send real orders via the API.
           </p>
           <div className="mt-4 overflow-hidden rounded-xl border border-zinc-800">
             <table className="w-full text-left text-sm">
               <thead className="bg-zinc-900/80 text-xs uppercase text-zinc-500">
                 <tr>
                   <th className="px-4 py-3 font-medium">Symbol</th>
+                  <th className="px-4 py-3 font-medium">LTP</th>
                   <th className="px-4 py-3 font-medium">Decision</th>
                   <th className="px-4 py-3 font-medium">Confidence</th>
                   <th className="px-4 py-3 font-medium">Note</th>
@@ -190,7 +241,7 @@ export default function Dashboard() {
                 {signals.length === 0 && !loading && (
                   <tr>
                     <td
-                      colSpan={4}
+                      colSpan={5}
                       className="px-4 py-8 text-center text-zinc-500"
                     >
                       No signals yet.
@@ -201,6 +252,11 @@ export default function Dashboard() {
                   <tr key={s.symbol} className="bg-zinc-950/40">
                     <td className="px-4 py-3 font-mono text-zinc-200">
                       {s.symbol}
+                    </td>
+                    <td className="px-4 py-3 font-mono text-zinc-300">
+                      {s.last_price != null && s.last_price !== undefined
+                        ? `₹${Number(s.last_price).toFixed(2)}`
+                        : "—"}
                     </td>
                     <td className="px-4 py-3">
                       <span
@@ -226,8 +282,8 @@ export default function Dashboard() {
           </h3>
           <ul className="mt-3 list-inside list-disc space-y-2">
             <li>
-              Connect NSE-approved data vendor + Zerodha Kite (or broker) with
-              paper trading first.
+              Groww: add tokens from the official instrument CSV; rotate any key
+              ever pasted into chat.
             </li>
             <li>
               Persist trades and model versions in MongoDB; publish events on

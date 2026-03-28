@@ -26,9 +26,11 @@ dist/
 
 # Local scratch
 app/tmp_test.py
+orchestrator/_groww_stash/
 
 # Logs
 *.log
+logs/
 
 # Mac
 .DS_Store
